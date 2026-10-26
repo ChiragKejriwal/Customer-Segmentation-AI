@@ -4,7 +4,6 @@ Page 3: Machine Learning Clustering & 2D/3D PCA Projection
 
 import streamlit as st
 import pandas as pd
-from src.data_loader import initialize_app_data
 from src.clustering import (
     preprocess_for_clustering,
     apply_kmeans,
@@ -23,8 +22,6 @@ st.set_page_config(
 
 # Ensure data is properly loaded before rendering
 clean_df, rfm_df = ensure_page_data_loaded(page_title="ML Clustering")
-
-# Render Modern Sidebar Header & Telemetry
 render_sidebar_header(active_page_title="Clustering")
 
 st.title("🔬 Unsupervised ML Customer Clustering")
@@ -52,7 +49,6 @@ def _get_kmeans(scaled, n_clusters: int):
 def _get_dbscan(scaled, eps: float, min_samples: int):
     return apply_dbscan(scaled, eps=eps, min_samples=min_samples)
 
-# Preprocess features: log1p + 99.5th percentile capping + StandardScaler
 scaled_data, scaler = _get_scaled_data(rfm_df)
 
 if algo == "K-Means":
@@ -63,16 +59,10 @@ else:
     min_samples = st.sidebar.slider("Min Samples", min_value=2, max_value=20, value=5, step=1)
     labels, sil_score = _get_dbscan(scaled_data, eps=eps, min_samples=min_samples)
 
-# Sidebar 2D vs 3D Projection Toggle
 st.sidebar.markdown("---")
 st.sidebar.header("🌐 Projection View Mode")
-view_mode = st.sidebar.radio(
-    "Select Dimensionality Mode:",
-    ["2D PCA Scatter", "3D PCA Space"],
-    index=0
-)
+view_mode = st.sidebar.radio("Select Dimensionality Mode:", ["2D PCA Scatter", "3D PCA Space"], index=0)
 
-# Compute PCA Projections (2D and 3D)
 pca_dict = _get_pca(scaled_data)
 pca_2d = pca_dict["pca_2d"]
 pca_3d = pca_dict["pca_3d"]
@@ -96,7 +86,6 @@ unique_clusters = sorted(list(set(labels)))
 num_clusters = len([c for c in unique_clusters if c != -1])
 noise_count = int((labels == -1).sum()) if -1 in unique_clusters else 0
 
-# Silhouette score quality assessment
 if sil_score >= 0.50:
     sil_badge_class = "badge-green"
     sil_badge_text = "✦ Strong Structure"
@@ -160,7 +149,6 @@ with c4:
 
 st.markdown("---")
 
-# Render Selected Visualization
 if view_mode == "2D PCA Scatter":
     st.subheader(f"📊 2D PCA Latent Space (Retains {var_2d * 100:.1f}% Total Variance)")
     fig_2d = plot_2d_clusters(pca_2d, labels=labels, customer_ids=clustered_df.get("CustomerID"))

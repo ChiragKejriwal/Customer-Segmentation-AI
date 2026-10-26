@@ -2,10 +2,9 @@
 Page 1: Executive Dashboard & Data Ingestion
 """
 
-from pathlib import Path
 import streamlit as st
 import pandas as pd
-from src.data_loader import initialize_app_data, inspect_uploaded_df, load_data
+from src.data_loader import initialize_app_data, inspect_uploaded_df
 from src.preprocessing import clean_data
 from src.rfm import calculate_rfm, score_rfm
 from src.ui_components import render_sidebar_header, show_schema_modal, ensure_page_data_loaded
@@ -19,14 +18,12 @@ st.set_page_config(
 
 # Ensure data is properly loaded before rendering
 clean_df, rfm_df = ensure_page_data_loaded(page_title="Dashboard")
-
-# Render Modern Sidebar Header & Telemetry
 render_sidebar_header(active_page_title="Dashboard")
 
 st.title("📊 Executive Dashboard & Data Ingestion")
 st.markdown("Inspect preloaded transactional records, monitor top-level revenue KPIs, or upload custom retail datasets.")
 
-# Sidebar Upload Section
+# Sidebar Data Source Configuration
 st.sidebar.markdown("---")
 st.sidebar.subheader("📁 Data Source Configuration")
 
@@ -69,11 +66,7 @@ if uploaded_file is not None:
                     st.sidebar.success(f"Loaded: `{uploaded_file.name}` ({len(clean_df):,} records)")
                     st.rerun()
         except Exception as e:
-            st.session_state["upload_error_info"] = {
-                "msg": str(e),
-                "inspection": None,
-                "name": uploaded_file.name
-            }
+            st.session_state["upload_error_info"] = {"msg": str(e), "inspection": None, "name": uploaded_file.name}
             st.sidebar.error(f"Error parsing file: {e}")
     else:
         if "upload_error_info" in st.session_state:
@@ -98,7 +91,6 @@ if "clean_df" in st.session_state and not st.session_state["clean_df"].empty:
     total_records = len(df)
     avg_order_val = df["TotalAmount"].mean()
 
-    # Top-Level Business Metric Cards
     st.subheader("📈 Top-Level Business Metrics")
     c1, c2, c3, c4 = st.columns(4)
 

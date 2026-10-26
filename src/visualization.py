@@ -11,7 +11,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-
 HIGH_CONTRAST_PALETTE = [
     "#6366F1",  # Electric Indigo
     "#10B981",  # Emerald Green
@@ -25,9 +24,21 @@ HIGH_CONTRAST_PALETTE = [
     "#06B6D4",  # Cyan
 ]
 
+PERSONA_COLOR_MAP = {
+    "Whale VIPs / Champions": "#10B981",
+    "Loyal Growth Spenders": "#06B6D4",
+    "Recent Promising Shoppers": "#6366F1",
+    "Potential Loyalists": "#8B5CF6",
+    "At-Risk High Spenders": "#F43F5E",
+    "Hibernating / Churned": "#64748B",
+    "Promising / New Customers": "#3B82F6",
+    "Need Attention": "#F59E0B",
+    "About to Sleep": "#E11D48",
+}
+
 
 def _get_trimmed_axis_range(series: pd.Series, padding_factor: float = 0.1) -> list:
-    """Calculates robust axis bounds using 1st-99th percentiles and IQR to avoid squishing."""
+    """Calculates robust axis bounds using 1st-99th percentiles and IQR to prevent outlier stretching."""
     q01 = series.quantile(0.01)
     q99 = series.quantile(0.99)
     q25 = series.quantile(0.25)
@@ -43,8 +54,7 @@ def _get_trimmed_axis_range(series: pd.Series, padding_factor: float = 0.1) -> l
 
 def plot_rfm_distributions(rfm_df: pd.DataFrame) -> go.Figure:
     """
-    Returns a multi-panel distribution figure for Recency, Frequency, and Monetary metrics.
-    Applies logarithmic/quantile-aware binning for Monetary and Frequency to prevent single-bar collapse.
+    Renders a 3-panel histogram distribution of Recency, Frequency, and Monetary metrics.
     """
     if rfm_df is None or rfm_df.empty:
         fig = go.Figure()
@@ -62,40 +72,16 @@ def plot_rfm_distributions(rfm_df: pd.DataFrame) -> go.Figure:
         horizontal_spacing=0.08
     )
 
-    # 1. Recency Histogram
     fig.add_trace(
-        go.Histogram(
-            x=rfm_df["Recency"],
-            name="Recency",
-            marker_color="#6366F1",
-            opacity=0.85,
-            nbinsx=35
-        ),
+        go.Histogram(x=rfm_df["Recency"], name="Recency", marker_color="#6366F1", opacity=0.85, nbinsx=35),
         row=1, col=1
     )
-
-    # 2. Frequency Histogram (using log-scale on Y to show full distribution)
-    freq_cap = rfm_df["Frequency"].quantile(0.99)
     fig.add_trace(
-        go.Histogram(
-            x=rfm_df["Frequency"],
-            name="Frequency",
-            marker_color="#10B981",
-            opacity=0.85,
-            nbinsx=30
-        ),
+        go.Histogram(x=rfm_df["Frequency"], name="Frequency", marker_color="#10B981", opacity=0.85, nbinsx=30),
         row=1, col=2
     )
-
-    # 3. Monetary Histogram (log scale on Y to display both mid and whale spenders)
     fig.add_trace(
-        go.Histogram(
-            x=rfm_df["Monetary"],
-            name="Monetary",
-            marker_color="#EC4899",
-            opacity=0.85,
-            nbinsx=35
-        ),
+        go.Histogram(x=rfm_df["Monetary"], name="Monetary", marker_color="#EC4899", opacity=0.85, nbinsx=35),
         row=1, col=3
     )
 
@@ -114,10 +100,8 @@ def plot_rfm_distributions(rfm_df: pd.DataFrame) -> go.Figure:
         margin=dict(l=40, r=30, t=70, b=40),
         font=dict(family="Inter, Roboto, sans-serif", color="#E2E8F0")
     )
-
     fig.update_xaxes(showgrid=True, gridcolor="rgba(255, 255, 255, 0.1)")
     fig.update_yaxes(showgrid=True, gridcolor="rgba(255, 255, 255, 0.1)")
-
     return fig
 
 
@@ -127,7 +111,7 @@ def plot_2d_clusters(
     customer_ids: Optional[Union[np.ndarray, pd.Series, list]] = None
 ) -> go.Figure:
     """
-    Renders a crisp 2D PCA cluster scatter plot with prominent centroid markers.
+    Renders a 2D PCA cluster scatter plot with prominent centroid markers.
     """
     if isinstance(pca_df, np.ndarray):
         cols = [f"PCA{i+1}" for i in range(pca_df.shape[1])]
@@ -148,12 +132,10 @@ def plot_2d_clusters(
     y_col = pca_cols[1] if len(pca_cols) > 1 else df.columns[1]
 
     fig = go.Figure()
-
-    # Plot customer data points per cluster
     unique_clusters = df["Cluster"].unique()
+
     for idx, cluster_name in enumerate(sorted(unique_clusters)):
-        cluster_mask = df["Cluster"] == cluster_name
-        cluster_data = df[cluster_mask]
+        cluster_data = df[df["Cluster"] == cluster_name]
         color = "#6B7280" if cluster_name == "Outliers" else HIGH_CONTRAST_PALETTE[idx % len(HIGH_CONTRAST_PALETTE)]
 
         hover_text = [
@@ -169,19 +151,12 @@ def plot_2d_clusters(
                 name=str(cluster_name),
                 text=hover_text,
                 hoverinfo="text",
-                marker=dict(
-                    size=6,
-                    color=color,
-                    opacity=0.75,
-                    line=dict(width=0.5, color="white")
-                )
+                marker=dict(size=6, color=color, opacity=0.75, line=dict(width=0.5, color="white"))
             )
         )
 
-        # Plot cluster centroid if not outlier
         if cluster_name != "Outliers" and len(cluster_data) > 0:
-            cx = cluster_data[x_col].mean()
-            cy = cluster_data[y_col].mean()
+            cx, cy = cluster_data[x_col].mean(), cluster_data[y_col].mean()
             fig.add_trace(
                 go.Scatter(
                     x=[cx],
@@ -192,16 +167,10 @@ def plot_2d_clusters(
                     textposition="top center",
                     textfont=dict(size=11, color="#FFFFFF", family="Inter, sans-serif"),
                     showlegend=False,
-                    marker=dict(
-                        symbol="diamond",
-                        size=14,
-                        color=color,
-                        line=dict(width=2, color="#FFFFFF")
-                    )
+                    marker=dict(symbol="diamond", size=14, color=color, line=dict(width=2, color="#FFFFFF"))
                 )
             )
 
-    # Trim axis range using robust percentile bounds
     x_range = _get_trimmed_axis_range(df[x_col])
     y_range = _get_trimmed_axis_range(df[y_col])
 
@@ -216,7 +185,6 @@ def plot_2d_clusters(
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         margin=dict(l=20, r=20, t=60, b=20)
     )
-
     return fig
 
 
@@ -226,7 +194,7 @@ def plot_3d_clusters(
     customer_ids: Optional[Union[np.ndarray, pd.Series, list]] = None
 ) -> go.Figure:
     """
-    Renders a high-contrast, unsquished 3D scatter plot of PCA components with centroid overlays.
+    Renders an interactive 3D scatter plot of PCA components with centroid overlays.
     """
     if isinstance(pca_df, np.ndarray):
         cols = [f"PCA{i+1}" for i in range(pca_df.shape[1])]
@@ -248,11 +216,10 @@ def plot_3d_clusters(
     z_col = pca_cols[2] if len(pca_cols) > 2 else df.columns[2]
 
     fig = go.Figure()
-
     unique_clusters = df["Cluster"].unique()
+
     for idx, cluster_name in enumerate(sorted(unique_clusters)):
-        cluster_mask = df["Cluster"] == cluster_name
-        cluster_data = df[cluster_mask]
+        cluster_data = df[df["Cluster"] == cluster_name]
         color = "#6B7280" if cluster_name == "Outliers" else HIGH_CONTRAST_PALETTE[idx % len(HIGH_CONTRAST_PALETTE)]
 
         hover_text = [
@@ -274,21 +241,12 @@ def plot_3d_clusters(
                 name=str(cluster_name),
                 text=hover_text,
                 hoverinfo="text",
-                marker=dict(
-                    size=5,
-                    color=color,
-                    opacity=0.8,
-                    line=dict(width=0.5, color="white")
-                )
+                marker=dict(size=5, color=color, opacity=0.8, line=dict(width=0.5, color="white"))
             )
         )
 
-        # Plot cluster centroid
         if cluster_name != "Outliers" and len(cluster_data) > 0:
-            cx = cluster_data[x_col].mean()
-            cy = cluster_data[y_col].mean()
-            cz = cluster_data[z_col].mean()
-
+            cx, cy, cz = cluster_data[x_col].mean(), cluster_data[y_col].mean(), cluster_data[z_col].mean()
             fig.add_trace(
                 go.Scatter3d(
                     x=[cx],
@@ -300,16 +258,10 @@ def plot_3d_clusters(
                     textposition="top center",
                     textfont=dict(size=12, color="#FFFFFF"),
                     showlegend=False,
-                    marker=dict(
-                        symbol="diamond",
-                        size=10,
-                        color=color,
-                        line=dict(width=2, color="#FFFFFF")
-                    )
+                    marker=dict(symbol="diamond", size=10, color=color, line=dict(width=2, color="#FFFFFF"))
                 )
             )
 
-    # Calculate trimmed axis ranges to eliminate empty space padding
     x_range = _get_trimmed_axis_range(df[x_col])
     y_range = _get_trimmed_axis_range(df[y_col])
     z_range = _get_trimmed_axis_range(df[z_col])
@@ -322,47 +274,18 @@ def plot_3d_clusters(
         margin=dict(l=10, r=10, t=50, b=10),
         scene=dict(
             aspectmode="cube",
-            xaxis=dict(
-                title=x_col,
-                range=x_range,
-                backgroundcolor="rgba(15, 23, 42, 0.8)",
-                gridcolor="rgba(255, 255, 255, 0.15)"
-            ),
-            yaxis=dict(
-                title=y_col,
-                range=y_range,
-                backgroundcolor="rgba(15, 23, 42, 0.8)",
-                gridcolor="rgba(255, 255, 255, 0.15)"
-            ),
-            zaxis=dict(
-                title=z_col,
-                range=z_range,
-                backgroundcolor="rgba(15, 23, 42, 0.8)",
-                gridcolor="rgba(255, 255, 255, 0.15)"
-            )
+            xaxis=dict(title=x_col, range=x_range, backgroundcolor="rgba(15, 23, 42, 0.8)", gridcolor="rgba(255, 255, 255, 0.15)"),
+            yaxis=dict(title=y_col, range=y_range, backgroundcolor="rgba(15, 23, 42, 0.8)", gridcolor="rgba(255, 255, 255, 0.15)"),
+            zaxis=dict(title=z_col, range=z_range, backgroundcolor="rgba(15, 23, 42, 0.8)", gridcolor="rgba(255, 255, 255, 0.15)")
         ),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     return fig
 
 
-PERSONA_COLOR_MAP = {
-    "Whale VIPs / Champions": "#10B981",       # Vibrant Emerald
-    "Loyal Growth Spenders": "#06B6D4",        # Luminous Cyan
-    "Recent Promising Shoppers": "#6366F1",    # Electric Indigo
-    "Potential Loyalists": "#8B5CF6",          # Royal Violet
-    "At-Risk High Spenders": "#F43F5E",        # Vibrant Rose Coral
-    "Hibernating / Churned": "#64748B",        # Cool Slate Muted
-    "Promising / New Customers": "#3B82F6",    # Bright Blue
-    "Need Attention": "#F59E0B",               # Amber Gold
-    "About to Sleep": "#E11D48",               # Crimson
-}
-
-
 def plot_persona_treemap(persona_summary_df: pd.DataFrame) -> go.Figure:
     """
-    Returns an executive, beautifully styled Treemap showing customer count and monetary metrics.
-    Features custom HTML-formatted text labels, vibrant distinct segment colors, and rich tooltips.
+    Renders a styled Treemap showing customer counts and monetary LTV metrics.
     """
     if persona_summary_df is None or persona_summary_df.empty:
         fig = go.Figure()
@@ -371,12 +294,8 @@ def plot_persona_treemap(persona_summary_df: pd.DataFrame) -> go.Figure:
 
     df = persona_summary_df.copy()
     if "Count" not in df.columns and "CustomerID" in df.columns:
-        df = df.groupby("Persona").agg(
-            Count=("CustomerID", "count"),
-            Monetary=("Monetary", "mean")
-        ).reset_index()
+        df = df.groupby("Persona").agg(Count=("CustomerID", "count"), Monetary=("Monetary", "mean")).reset_index()
 
-    # Determine monetary column
     monetary_col = "Avg_Monetary" if "Avg_Monetary" in df.columns else ("Monetary" if "Monetary" in df.columns else None)
     if monetary_col:
         df["_avg_spend"] = df[monetary_col]
@@ -388,12 +307,6 @@ def plot_persona_treemap(persona_summary_df: pd.DataFrame) -> go.Figure:
     total_customers = df["Count"].sum()
     df["_pct_share"] = (df["Count"] / max(total_customers, 1) * 100.0).round(1)
 
-    # Assign distinct colors
-    df["_color"] = [
-        PERSONA_COLOR_MAP.get(str(p).strip(), HIGH_CONTRAST_PALETTE[i % len(HIGH_CONTRAST_PALETTE)])
-        for i, p in enumerate(df["Persona"])
-    ]
-
     fig = px.treemap(
         df,
         path=["Persona"],
@@ -404,8 +317,6 @@ def plot_persona_treemap(persona_summary_df: pd.DataFrame) -> go.Figure:
         template="plotly_dark"
     )
 
-    # Attach rich customdata for text and hover templates:
-    # [0: Avg Spend, 1: Total Segment Revenue, 2: Pct Share]
     customdata = np.stack(
         (df["_avg_spend"].values, df["_total_rev"].values, df["_pct_share"].values),
         axis=-1
@@ -428,10 +339,7 @@ def plot_persona_treemap(persona_summary_df: pd.DataFrame) -> go.Figure:
             "💵 <b>Estimated Segment Revenue:</b> $%{customdata[1]:,.2f}<br>"
             "<extra></extra>"
         ),
-        marker=dict(
-            cornerradius=8,
-            line=dict(width=2, color="rgba(15, 23, 42, 0.95)")
-        )
+        marker=dict(cornerradius=8, line=dict(width=2, color="rgba(15, 23, 42, 0.95)"))
     )
 
     fig.update_layout(
@@ -448,7 +356,7 @@ def plot_persona_treemap(persona_summary_df: pd.DataFrame) -> go.Figure:
 
 def plot_persona_revenue_comparison(persona_summary_df: pd.DataFrame) -> go.Figure:
     """
-    Renders a modern horizontal bar chart comparing Total Estimated Revenue and Customer Share by Persona.
+    Renders a horizontal bar chart comparing Total Estimated Revenue by Persona.
     """
     if persona_summary_df is None or persona_summary_df.empty:
         fig = go.Figure()
@@ -463,7 +371,6 @@ def plot_persona_revenue_comparison(persona_summary_df: pd.DataFrame) -> go.Figu
         df["Total_Revenue"] = df["Count"]
 
     df = df.sort_values(by="Total_Revenue", ascending=True)
-
     colors = [
         PERSONA_COLOR_MAP.get(str(p).strip(), HIGH_CONTRAST_PALETTE[i % len(HIGH_CONTRAST_PALETTE)])
         for i, p in enumerate(df["Persona"])
@@ -475,11 +382,7 @@ def plot_persona_revenue_comparison(persona_summary_df: pd.DataFrame) -> go.Figu
             y=df["Persona"],
             x=df["Total_Revenue"],
             orientation="h",
-            marker=dict(
-                color=colors,
-                cornerradius=6,
-                line=dict(width=1, color="rgba(255, 255, 255, 0.15)")
-            ),
+            marker=dict(color=colors, cornerradius=6, line=dict(width=1, color="rgba(255, 255, 255, 0.15)")),
             text=[f"${rev:,.0f} ({cnt:,} users)" for rev, cnt in zip(df["Total_Revenue"], df["Count"])],
             textposition="auto",
             hovertemplate="<b>%{y}</b><br>Total Revenue: $%{x:,.2f}<extra></extra>"
@@ -511,13 +414,8 @@ def plot_cluster_scatter(
 
 
 def plot_persona_pie(persona_counts: pd.DataFrame) -> go.Figure:
-    """Generates a donut chart for customer personas with cohesive color mapping."""
+    """Generates a donut chart for customer personas."""
     df = persona_counts.copy()
-    colors = [
-        PERSONA_COLOR_MAP.get(str(p).strip(), HIGH_CONTRAST_PALETTE[i % len(HIGH_CONTRAST_PALETTE)])
-        for i, p in enumerate(df["Persona"])
-    ]
-
     fig = px.pie(
         df,
         names="Persona",

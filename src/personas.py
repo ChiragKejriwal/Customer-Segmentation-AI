@@ -1,9 +1,9 @@
 """
-Customer Persona Generator & Strategy Module.
+Customer Persona Generator & Marketing Strategy Module.
 Maps unsupervised clusters dynamically into unique, non-overlapping marketing personas.
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Union
 import numpy as np
 import pandas as pd
 
@@ -67,8 +67,10 @@ PERSONA_LIBRARY: List[Dict[str, Any]] = [
     }
 ]
 
-# Fallback dynamic map updated during generation
-PERSONA_MAP: Dict[str, Dict[str, str]] = {p["name"]: {"description": p["description"], "action": p["action"], "color": p["color"]} for p in PERSONA_LIBRARY}
+PERSONA_MAP: Dict[str, Dict[str, str]] = {
+    p["name"]: {"description": p["description"], "action": p["action"], "color": p["color"]}
+    for p in PERSONA_LIBRARY
+}
 PERSONA_MAP["Anomalies / Noise Outliers"] = {
     "description": "Extreme transaction outliers or anomalous records identified by density clustering.",
     "action": "Manual account review for data entry anomalies, wholesale bulk buyers, or payment disputes.",
@@ -87,21 +89,12 @@ def generate_personas(
     cluster_labels: Union[np.ndarray, pd.Series, list, str]
 ) -> pd.DataFrame:
     """
-    Calculates centroid RFM metrics across clusters and dynamically assigns EVERY cluster
-    to a unique, non-overlapping persona name.
-
-    Guarantees:
-    - Exactly k unique persona names for k clusters.
-    - Preserves relative behavioral ranking (Recency, Frequency, Monetary).
-    - Outliers (-1) map to 'Anomalies / Noise Outliers'.
+    Assigns unique, non-overlapping marketing persona names to each cluster based on centroid RFM ranks.
     """
     if rfm_df is None or rfm_df.empty:
-        df = pd.DataFrame(columns=["CustomerID", "Recency", "Frequency", "Monetary", "Cluster", "Persona"])
-        return df
+        return pd.DataFrame(columns=["CustomerID", "Recency", "Frequency", "Monetary", "Cluster", "Persona"])
 
     df = rfm_df.copy()
-
-    # Assign cluster column
     if isinstance(cluster_labels, str) and cluster_labels in df.columns:
         df["Cluster"] = df[cluster_labels]
     else:
@@ -109,10 +102,8 @@ def generate_personas(
 
     unique_clusters = [c for c in df["Cluster"].unique() if str(c) != "-1" and c != -1]
     k = len(unique_clusters)
-
     cluster_persona_map: Dict[Any, str] = {}
 
-    # Handle DBSCAN noise cluster
     if -1 in df["Cluster"].values or "-1" in df["Cluster"].values:
         cluster_persona_map[-1] = "Anomalies / Noise Outliers"
         cluster_persona_map["-1"] = "Anomalies / Noise Outliers"
@@ -121,26 +112,20 @@ def generate_personas(
         df["Persona"] = df["Cluster"].map(cluster_persona_map).fillna("Anomalies / Noise Outliers")
         return df
 
-    # Compute mean metrics per cluster
     stats = df[df["Cluster"].isin(unique_clusters)].groupby("Cluster")[["Recency", "Frequency", "Monetary"]].mean()
 
-    # Calculate percentile scores (0 to 1) for each cluster
-    # Note: Recency is inverted so higher score = more recent (better)
     if k == 1:
         cluster_persona_map[unique_clusters[0]] = "Loyal Core Buyers"
     else:
-        # Invert recency rank so lower recency days = higher rank
+        # Lower recency is better (higher rank)
         r_scores = (stats["Recency"].max() - stats["Recency"]) / ((stats["Recency"].max() - stats["Recency"].min()) or 1.0)
         f_scores = (stats["Frequency"] - stats["Frequency"].min()) / ((stats["Frequency"].max() - stats["Frequency"].min()) or 1.0)
         m_scores = (stats["Monetary"] - stats["Monetary"].min()) / ((stats["Monetary"].max() - stats["Monetary"].min()) or 1.0)
 
-        # Composite Value and Engagement
         v_scores = 0.5 * m_scores + 0.3 * f_scores + 0.2 * r_scores
         e_scores = 0.6 * r_scores + 0.4 * f_scores
 
         assigned_personas = set()
-
-        # Sort clusters by composite value descending to prioritize best archetypes
         sorted_clusters = v_scores.sort_values(ascending=False).index.tolist()
 
         for c_id in sorted_clusters:
@@ -152,12 +137,10 @@ def generate_personas(
 
             best_match = None
             for p in PERSONA_LIBRARY:
-                if p["name"] not in assigned_personas:
-                    if p["condition"](r, f, m, v, e):
-                        best_match = p["name"]
-                        break
+                if p["name"] not in assigned_personas and p["condition"](r, f, m, v, e):
+                    best_match = p["name"]
+                    break
 
-            # Fallback to unused library entry
             if not best_match:
                 for p in PERSONA_LIBRARY:
                     if p["name"] not in assigned_personas:
@@ -170,15 +153,13 @@ def generate_personas(
             assigned_personas.add(best_match)
             cluster_persona_map[c_id] = best_match
 
-    # Map persona column
     df["Persona"] = df["Cluster"].map(cluster_persona_map).fillna("Developing Regulars")
-
     return df
 
 
 def assign_personas_by_rfm(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Rule-based fallback persona assignment based on quantile RFM scores.
+    Rule-based quantile persona assignment when clustering model has not been executed.
     """
     if df is None or df.empty:
         return df if df is not None else pd.DataFrame()
@@ -187,7 +168,7 @@ def assign_personas_by_rfm(df: pd.DataFrame) -> pd.DataFrame:
         from src.rfm import score_rfm
         df = score_rfm(df)
 
-    def get_persona(row):
+    def _get_persona(row):
         r = row.get("R_Score", 3)
         f = row.get("F_Score", 3)
         m = row.get("M_Score", 3)
@@ -200,9 +181,8 @@ def assign_personas_by_rfm(df: pd.DataFrame) -> pd.DataFrame:
             return "Recent Promising Shoppers"
         elif r <= 2 and (f >= 3 or m >= 3):
             return "At-Risk High Spenders"
-        else:
-            return "Hibernating / Churned"
+        return "Hibernating / Churned"
 
     res = df.copy()
-    res["Persona"] = res.apply(get_persona, axis=1)
+    res["Persona"] = res.apply(_get_persona, axis=1)
     return res

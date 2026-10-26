@@ -3,8 +3,6 @@ Page 4: Personas and Targeted Marketing Strategies
 """
 
 import streamlit as st
-import pandas as pd
-from src.data_loader import initialize_app_data
 from src.personas import generate_personas, assign_personas_by_rfm, PERSONA_MAP
 from src.visualization import plot_persona_treemap, plot_persona_pie, plot_persona_revenue_comparison
 from src.ui_components import render_sidebar_header, ensure_page_data_loaded
@@ -18,8 +16,6 @@ st.set_page_config(
 
 # Ensure data is properly loaded before rendering
 clean_df, rfm_df = ensure_page_data_loaded(page_title="Customer Personas")
-
-# Render Modern Sidebar Header & Telemetry
 render_sidebar_header(active_page_title="Personas")
 
 st.title("👥 Customer Personas & Marketing Playbooks")
@@ -28,7 +24,6 @@ Translate algorithmic clusters into distinct, non-overlapping business personas.
 Inspect revenue contributions via interactive Treemaps, review prescriptive marketing strategies, and export tagged customer lists.
 """)
 
-# Use ML cluster labels if available, otherwise fallback to rule-based personas
 if "cluster_labels" in st.session_state:
     cluster_labels = st.session_state["cluster_labels"]
     persona_df = generate_personas(rfm_df, cluster_labels)

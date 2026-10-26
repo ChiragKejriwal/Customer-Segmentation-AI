@@ -1,6 +1,6 @@
 """
 Data Loader Module for Customer Segmentation Platform.
-Loads UCI Online Retail Dataset, performs datetime parsing, and provides session state initialization.
+Handles data ingestion, schema validation, column synonym resolution, and cached loading.
 """
 
 from pathlib import Path
@@ -9,10 +9,8 @@ import logging
 import pandas as pd
 import streamlit as st
 
-# Configure module logger
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
-
 
 MANDATORY_COLUMNS = [
     "InvoiceNo",
@@ -41,7 +39,7 @@ COLUMN_SYNONYMS = {
 
 
 def get_sample_template_df() -> pd.DataFrame:
-    """Returns a realistic sample retail transactional DataFrame matching the required schema."""
+    """Returns sample retail transactional records matching the required schema."""
     return pd.DataFrame([
         {
             "InvoiceNo": "536365",
@@ -98,8 +96,7 @@ def get_sample_template_df() -> pd.DataFrame:
 
 def inspect_uploaded_df(df_raw: pd.DataFrame) -> dict:
     """
-    Inspects raw uploaded DataFrame against required retail schema,
-    resolves column synonyms, identifies missing fields, and checks basic integrity.
+    Validates uploaded DataFrame schema and maps column synonyms to canonical names.
     """
     raw_cols = list(df_raw.columns)
     col_lookup = {str(c).strip().lower().replace(" ", "_"): c for c in df_raw.columns}
@@ -122,9 +119,7 @@ def inspect_uploaded_df(df_raw: pd.DataFrame) -> dict:
     extra_columns = [c for c in raw_cols if c not in accounted_cols]
 
     is_valid = len(missing_mandatory) == 0
-    errors = []
-    if not is_valid:
-        errors.append(f"Missing mandatory fields: {missing_mandatory}")
+    errors = [f"Missing mandatory fields: {missing_mandatory}"] if not is_valid else []
 
     return {
         "raw_columns": raw_cols,
@@ -139,7 +134,7 @@ def inspect_uploaded_df(df_raw: pd.DataFrame) -> dict:
 
 
 def get_default_data_path() -> Optional[Path]:
-    """Resolves default customer dataset path across different runtime working directories."""
+    """Resolves default customer dataset path across different runtime environments."""
     candidates = [
         Path(__file__).resolve().parent.parent / "data" / "customer_data.csv",
         Path("data/customer_data.csv").resolve(),
@@ -161,33 +156,29 @@ def load_cached_raw_data(filepath_str: str) -> pd.DataFrame:
 
 def load_data(filepath: Union[str, Path, object]) -> pd.DataFrame:
     """
-    Loads raw transaction data from a CSV or Excel file or UploadedFile into a pandas DataFrame.
+    Loads raw transaction logs from a CSV, Excel file, or file-like buffer into a DataFrame.
     """
     try:
         if hasattr(filepath, "read") or hasattr(filepath, "seek"):
-            # UploadedFile stream
             df = pd.read_csv(filepath)
         else:
             path = Path(filepath)
             if not path.is_file():
-                error_msg = f"Dataset file not found at path: {path.resolve()}"
+                error_msg = f"Dataset file not found: {path.resolve()}"
                 logger.error(error_msg)
                 raise FileNotFoundError(error_msg)
 
-            logger.info(f"Loading data from: {path}")
             if path.suffix.lower() in [".xlsx", ".xls"]:
                 df = pd.read_excel(path)
             else:
                 try:
                     df = pd.read_csv(path, encoding="utf-8")
                 except UnicodeDecodeError:
-                    logger.warning("UTF-8 decoding failed, trying ISO-8859-1 (latin1) encoding...")
                     df = pd.read_csv(path, encoding="ISO-8859-1")
 
         if df.empty:
             raise ValueError("The provided dataset is empty.")
 
-        # Standardize matched synonym columns to canonical names
         inspection = inspect_uploaded_df(df)
         rename_map = {orig: target for target, orig in inspection["matched_mandatory"].items() if orig != target}
         if rename_map:
@@ -196,7 +187,6 @@ def load_data(filepath: Union[str, Path, object]) -> pd.DataFrame:
         if "InvoiceDate" in df.columns:
             df["InvoiceDate"] = pd.to_datetime(df["InvoiceDate"], errors="coerce")
 
-        logger.info(f"Successfully loaded {len(df):,} records.")
         return df
 
     except FileNotFoundError:
@@ -208,8 +198,7 @@ def load_data(filepath: Union[str, Path, object]) -> pd.DataFrame:
 
 def initialize_app_data(force_reload: bool = False) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
     """
-    Session state helper that ensures default cleaned and RFM datasets are preloaded
-    so no page opens in an empty state.
+    Initializes session state with default cleaned and scored RFM data.
     """
     from src.preprocessing import clean_data
     from src.rfm import calculate_rfm, score_rfm
@@ -230,6 +219,6 @@ def initialize_app_data(force_reload: bool = False) -> Tuple[Optional[pd.DataFra
             st.session_state["data_source_name"] = "UCI Online Retail Catalog"
             return clean_df, rfm_df
         except Exception as e:
-            logger.error(f"Failed to auto-initialize default dataset: {e}")
+            logger.error(f"Failed to initialize default dataset: {e}")
 
     return None, None

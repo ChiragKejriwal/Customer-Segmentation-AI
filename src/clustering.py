@@ -1,6 +1,6 @@
 """
 Clustering Module for Customer Segmentation.
-Applies log-transformation, outlier capping, StandardScaler preprocessing,
+Applies log-transformation, outlier percentile clipping, StandardScaler,
 K-Means, DBSCAN, and 2D/3D PCA dimensionality reduction.
 """
 
@@ -19,47 +19,32 @@ def preprocess_for_clustering(
     outlier_percentile: float = 99.5
 ) -> Tuple[np.ndarray, StandardScaler]:
     """
-    Preprocesses RFM features for robust clustering and PCA visualization:
-    1. Applies log-transformation (np.log1p) to neutralize power-law skewness.
-    2. Caps extreme outliers above the specified percentile (default: 99.5th).
-    3. Standardizes features with StandardScaler (zero mean, unit variance).
-
-    Args:
-        rfm_df: DataFrame containing Recency, Frequency, and Monetary features.
-        feature_cols: Target feature column names (defaults to ["Recency", "Frequency", "Monetary"]).
-        outlier_percentile: Upper percentile threshold to clip extreme values.
-
-    Returns:
-        Tuple[np.ndarray, StandardScaler]: Scaled feature array and fitted StandardScaler instance.
+    Preprocesses RFM features for clustering:
+    1. Applies np.log1p transformation to reduce skewness.
+    2. Clips extreme outliers above specified percentile (default 99.5%).
+    3. Normalizes features using StandardScaler.
     """
     if feature_cols is None:
         feature_cols = ["Recency", "Frequency", "Monetary"]
 
     if rfm_df is None or rfm_df.empty:
-        scaler = StandardScaler()
-        return np.empty((0, len(feature_cols))), scaler
+        return np.empty((0, len(feature_cols))), StandardScaler()
 
     features = rfm_df[feature_cols].copy().astype(float)
-
-    # 1. Apply log-transformation to handle exponential/skewed retail distributions
     non_negative = np.maximum(features.values, 0.0)
     log_transformed = np.log1p(non_negative)
 
-    # 2. Cap extreme outliers above the 99.5th percentile to prevent PCA squishing
-    capped_features = np.zeros_like(log_transformed)
+    capped = np.zeros_like(log_transformed)
     for col_idx in range(log_transformed.shape[1]):
         col_vals = log_transformed[:, col_idx]
         cap_val = np.percentile(col_vals, outlier_percentile)
-        capped_features[:, col_idx] = np.clip(col_vals, a_min=None, a_max=cap_val)
+        capped[:, col_idx] = np.clip(col_vals, a_min=None, a_max=cap_val)
 
-    # 3. Apply StandardScaler
     scaler = StandardScaler()
-    scaled_data = scaler.fit_transform(capped_features)
-
+    scaled_data = scaler.fit_transform(capped)
     return scaled_data, scaler
 
 
-# Alias for backward compatibility
 scale_features = preprocess_for_clustering
 
 
@@ -69,14 +54,10 @@ def apply_kmeans(
     random_state: int = 42
 ) -> Tuple[np.ndarray, float]:
     """
-    Fits K-Means clustering algorithm on scaled data with fast silhouette scoring.
-
-    Returns:
-        Tuple[np.ndarray, float]: Cluster labels and the Silhouette Score.
+    Fits K-Means algorithm and calculates silhouette score with adaptive sampling.
     """
     if len(scaled_data) < n_clusters or len(scaled_data) <= 1:
-        labels = np.zeros(len(scaled_data), dtype=int)
-        return labels, 0.0
+        return np.zeros(len(scaled_data), dtype=int), 0.0
 
     kmeans = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=10)
     labels = kmeans.fit_predict(scaled_data)
@@ -97,12 +78,11 @@ def run_kmeans(
     random_state: int = 42
 ) -> Tuple[np.ndarray, KMeans, float]:
     """
-    Fits K-Means and returns labels, fitted model, and silhouette score.
+    Fits K-Means and returns labels, model object, and silhouette score.
     """
     if len(scaled_data) < n_clusters or len(scaled_data) <= 1:
         kmeans = KMeans(n_clusters=max(1, min(n_clusters, len(scaled_data))), random_state=random_state, n_init=10)
-        labels = np.zeros(len(scaled_data), dtype=int)
-        return labels, kmeans, 0.0
+        return np.zeros(len(scaled_data), dtype=int), kmeans, 0.0
 
     kmeans = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=10)
     labels = kmeans.fit_predict(scaled_data)
@@ -119,7 +99,7 @@ def apply_dbscan(
     random_state: int = 42
 ) -> Tuple[np.ndarray, float]:
     """
-    Fits DBSCAN clustering algorithm on scaled data as a density-based alternative with fast silhouette scoring.
+    Fits DBSCAN density-based clustering algorithm with adaptive silhouette scoring.
     """
     if len(scaled_data) == 0:
         return np.array([], dtype=int), 0.0
@@ -128,9 +108,9 @@ def apply_dbscan(
     labels = dbscan.fit_predict(scaled_data)
 
     unique_labels = set(labels)
-    non_noise_labels = [l for l in unique_labels if l != -1]
+    non_noise = [l for l in unique_labels if l != -1]
 
-    if len(non_noise_labels) > 1 and len(scaled_data) > len(unique_labels):
+    if len(non_noise) > 1 and len(scaled_data) > len(unique_labels):
         try:
             sample_size = min(len(scaled_data), 2500) if len(scaled_data) > 2500 else None
             sil_score = float(silhouette_score(scaled_data, labels, sample_size=sample_size, random_state=random_state))
@@ -148,26 +128,18 @@ def apply_pca(
     random_state: int = 42
 ) -> Tuple[np.ndarray, PCA]:
     """
-    Performs Principal Component Analysis (PCA) to reduce dimensions.
-
-    Args:
-        scaled_data: 2D numpy array of scaled features.
-        n_components: Target dimensionality (2 or 3).
-        random_state: Random seed for reproducibility.
-
-    Returns:
-        Tuple[np.ndarray, PCA]: Transformed PCA coordinates and fitted PCA model.
+    Applies Principal Component Analysis (PCA) to reduce feature dimensionality.
     """
     if len(scaled_data) == 0:
-        pca = PCA(n_components=n_components, random_state=random_state)
-        return np.empty((0, n_components)), pca
+        return np.empty((0, n_components)), PCA(n_components=n_components, random_state=random_state)
 
-    max_components = min(scaled_data.shape[0], scaled_data.shape[1])
-    components = min(n_components, max_components)
-
+    components = min(n_components, scaled_data.shape[0], scaled_data.shape[1])
     pca = PCA(n_components=components, random_state=random_state)
     pca_data = pca.fit_transform(scaled_data)
     return pca_data, pca
+
+
+run_pca = apply_pca
 
 
 def compute_pca_projections(
@@ -175,17 +147,7 @@ def compute_pca_projections(
     random_state: int = 42
 ) -> Dict[str, Union[pd.DataFrame, float, PCA]]:
     """
-    Computes both 2D and 3D PCA representations along with explained variance ratios.
-
-    Returns:
-        dict: {
-            "pca_2d": pd.DataFrame with ['PCA1', 'PCA2'],
-            "pca_3d": pd.DataFrame with ['PCA1', 'PCA2', 'PCA3'],
-            "var_ratio_2d": total explained variance ratio for 2D,
-            "var_ratio_3d": total explained variance ratio for 3D,
-            "pca_model_2d": fitted 2D PCA object,
-            "pca_model_3d": fitted 3D PCA object
-        }
+    Computes 2D and 3D PCA coordinates and explained variance ratios.
     """
     pca_2d_arr, model_2d = apply_pca(scaled_data, n_components=2, random_state=random_state)
     pca_3d_arr, model_3d = apply_pca(scaled_data, n_components=3, random_state=random_state)
@@ -204,6 +166,3 @@ def compute_pca_projections(
         "pca_model_2d": model_2d,
         "pca_model_3d": model_3d
     }
-
-
-run_pca = apply_pca

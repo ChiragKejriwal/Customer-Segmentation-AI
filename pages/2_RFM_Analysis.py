@@ -4,9 +4,6 @@ Calculates customer-level Recency, Frequency, and Monetary metrics and displays 
 """
 
 import streamlit as st
-import pandas as pd
-from src.data_loader import initialize_app_data
-from src.rfm import calculate_rfm, score_rfm
 from src.visualization import plot_rfm_distributions
 from src.ui_components import render_sidebar_header, ensure_page_data_loaded
 
@@ -19,8 +16,6 @@ st.set_page_config(
 
 # Ensure data is properly loaded before rendering
 clean_df, rfm_df = ensure_page_data_loaded(page_title="RFM Analysis")
-
-# Render Modern Sidebar Header & Telemetry
 render_sidebar_header(active_page_title="RFM Analysis")
 
 st.title("📐 Recency, Frequency & Monetary (RFM) Analysis")
@@ -44,33 +39,33 @@ avg_m = scored_rfm["Monetary"].mean()
 
 with c1:
     st.markdown(f"""
-    <div class="rfm-card">
-        <div class="rfm-title">👥 Analyzed Customers</div>
-        <div class="rfm-val">{total_cust:,}</div>
+    <div class="kpi-card">
+        <div class="kpi-title">👥 Analyzed Customers</div>
+        <div class="kpi-val">{total_cust:,}</div>
     </div>
     """, unsafe_allow_html=True)
 
 with c2:
     st.markdown(f"""
-    <div class="rfm-card">
-        <div class="rfm-title">⏱️ Average Recency</div>
-        <div class="rfm-val">{avg_r:.1f} days</div>
+    <div class="kpi-card">
+        <div class="kpi-title">⏱️ Average Recency</div>
+        <div class="kpi-val">{avg_r:.1f} days</div>
     </div>
     """, unsafe_allow_html=True)
 
 with c3:
     st.markdown(f"""
-    <div class="rfm-card">
-        <div class="rfm-title">🔄 Average Frequency</div>
-        <div class="rfm-val">{avg_f:.1f} orders</div>
+    <div class="kpi-card">
+        <div class="kpi-title">🔄 Average Frequency</div>
+        <div class="kpi-val">{avg_f:.1f} orders</div>
     </div>
     """, unsafe_allow_html=True)
 
 with c4:
     st.markdown(f"""
-    <div class="rfm-card">
-        <div class="rfm-title">💳 Average Spend (LTV)</div>
-        <div class="rfm-val">${avg_m:,.2f}</div>
+    <div class="kpi-card">
+        <div class="kpi-title">💳 Average Spend (LTV)</div>
+        <div class="kpi-val">${avg_m:,.2f}</div>
     </div>
     """, unsafe_allow_html=True)
 

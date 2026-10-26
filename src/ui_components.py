@@ -1,16 +1,16 @@
 """
 Shared UI Components & Styling Module for Customer Segmentation Platform.
-Provides rich sidebar branding, dataset telemetry cards, custom CSS, and CSV schema modals.
+Provides sidebar branding, dataset telemetry cards, custom CSS, and CSV schema modals.
 """
 
-from typing import Any, Dict, Optional
-import streamlit as st
+from typing import Any, Dict, Optional, Tuple
 import pandas as pd
-from src.data_loader import get_sample_template_df, MANDATORY_COLUMNS
+import streamlit as st
+from src.data_loader import get_sample_template_df
 
 
 def apply_custom_css():
-    """Injects high-contrast, modern glassmorphism CSS across the application."""
+    """Injects modern dark glassmorphism CSS across the application."""
     st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
@@ -19,7 +19,6 @@ def apply_custom_css():
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         }
 
-        /* Sidebar Styling */
         [data-testid="stSidebar"] {
             background: linear-gradient(180deg, #0B0F19 0%, #0F172A 50%, #0B0F19 100%);
             border-right: 1px solid rgba(255, 255, 255, 0.08);
@@ -79,7 +78,6 @@ def apply_custom_css():
             margin-top: 2px;
         }
 
-        /* Glass Cards */
         .glass-card {
             background: rgba(30, 41, 59, 0.6);
             backdrop-filter: blur(14px);
@@ -128,7 +126,6 @@ def apply_custom_css():
             letter-spacing: -0.02em;
         }
 
-        /* Chips & Badges */
         .card-badge {
             display: inline-block;
             padding: 0.25rem 0.65rem;
@@ -144,7 +141,6 @@ def apply_custom_css():
         .badge-rose { background: rgba(244, 63, 94, 0.18); color: #FB7185; border: 1px solid rgba(244, 63, 94, 0.4); }
         .badge-amber { background: rgba(245, 158, 11, 0.18); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.4); }
 
-        /* Performance Metric Glass Cards */
         .perf-metric-card {
             background: linear-gradient(145deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.95) 100%);
             border-radius: 14px;
@@ -205,7 +201,6 @@ def apply_custom_css():
             line-height: 1.3;
         }
 
-        /* Animated Loader Styles */
         @keyframes spinRing {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
@@ -256,17 +251,13 @@ def apply_custom_css():
     """, unsafe_allow_html=True)
 
 
-def ensure_page_data_loaded(page_title: str = "") -> tuple:
+def ensure_page_data_loaded(page_title: str = "") -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Ensures that cleaned and RFM datasets are completely and properly loaded before rendering the page.
-    Displays an elegant animated glassmorphic loader with progress feedback if loading from disk.
-
-    Returns:
-        tuple: (clean_df, rfm_df) ready for computation and visualization.
+    Ensures that cleaned and RFM datasets are preloaded before page rendering.
+    Displays an animated loader if loading from disk.
     """
     apply_custom_css()
 
-    # If data is already fully populated in session state, return immediately with zero delay
     if (
         "clean_df" in st.session_state 
         and "rfm_df" in st.session_state 
@@ -275,9 +266,7 @@ def ensure_page_data_loaded(page_title: str = "") -> tuple:
     ):
         return st.session_state["clean_df"], st.session_state["rfm_df"]
 
-    # Render dedicated full-page loading card
     loader_placeholder = st.empty()
-    progress_placeholder = st.empty()
 
     with loader_placeholder.container():
         st.markdown(f"""
@@ -287,7 +276,7 @@ def ensure_page_data_loaded(page_title: str = "") -> tuple:
                 🔄 Initializing Customer Intelligence Engine
             </div>
             <div style="font-size: 0.95rem; color: #94A3B8; line-height: 1.5; max-width: 520px; margin: 0 auto;">
-                Loading and validating transactional retail records, cleaning anomalies, and scoring behavioral RFM matrices...
+                Loading and validating transactional records, filtering anomalies, and scoring behavioral RFM matrices...
             </div>
             <div class="loader-step-pill">
                 <span>⚡</span> Preparing {page_title if page_title else 'Workspace'} View...
@@ -296,12 +285,8 @@ def ensure_page_data_loaded(page_title: str = "") -> tuple:
         """, unsafe_allow_html=True)
 
     from src.data_loader import initialize_app_data
-
     clean_df, rfm_df = initialize_app_data(force_reload=True)
-
-    # Clear loading placeholders once data is fully ready
     loader_placeholder.empty()
-    progress_placeholder.empty()
 
     if clean_df is None or clean_df.empty:
         st.error("❌ **Data Loading Alert:** Could not locate or initialize default retail dataset. Please upload a dataset in Dashboard.")
@@ -330,7 +315,6 @@ def render_sidebar_header(active_page_title: str = "Overview"):
     </div>
     """, unsafe_allow_html=True)
 
-    # Active dataset status card
     data_source_name = st.session_state.get("data_source_name", "UCI Online Retail Catalog")
     total_customers = len(st.session_state.get("rfm_df", [])) if "rfm_df" in st.session_state else 0
     total_records = len(st.session_state.get("clean_df", [])) if "clean_df" in st.session_state else 0
@@ -362,20 +346,17 @@ def show_schema_modal(inspection: Optional[Dict[str, Any]] = None, error_msg: Op
     showing validation errors/warnings, a sample preview, and a download template button.
     """
     if error_msg or (inspection and not inspection.get("is_valid", True)):
-        st.markdown(
-            """
-            <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 12px; padding: 1.15rem 1.35rem; margin-bottom: 1.25rem;">
-                <div style="font-size: 1.15rem; font-weight: 700; color: #F87171; margin-bottom: 0.35rem;">
-                    ❌ Schema Validation Issue Detected
-                </div>
-                <div style="font-size: 0.92rem; color: #E2E8F0; line-height: 1.5;">
-                    The uploaded CSV cannot be processed because one or more mandatory transactional fields are missing or improperly formatted.
-                    Please match the required column schema below or download the sample template.
-                </div>
+        st.markdown("""
+        <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 12px; padding: 1.15rem 1.35rem; margin-bottom: 1.25rem;">
+            <div style="font-size: 1.15rem; font-weight: 700; color: #F87171; margin-bottom: 0.35rem;">
+                ❌ Schema Validation Issue Detected
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            <div style="font-size: 0.92rem; color: #E2E8F0; line-height: 1.5;">
+                The uploaded CSV cannot be processed because one or more mandatory fields are missing.
+                Please match the required schema below or download the sample template.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
         if inspection and inspection.get("missing_mandatory"):
             missing_html = " ".join([f"<span class='card-badge badge-rose'>Missing: {c}</span>" for c in inspection["missing_mandatory"]])
@@ -385,20 +366,16 @@ def show_schema_modal(inspection: Optional[Dict[str, Any]] = None, error_msg: Op
             detected_html = " ".join([f"<span class='card-badge badge-blue'>{c}</span>" for c in inspection["raw_columns"]])
             st.markdown(f"**Detected Columns in Upload:** {detected_html}", unsafe_allow_html=True)
     else:
-        st.markdown(
-            """
-            <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(56, 189, 248, 0.1) 100%); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 12px; padding: 1.15rem 1.35rem; margin-bottom: 1.25rem;">
-                <div style="font-size: 1.15rem; font-weight: 700; color: #818CF8; margin-bottom: 0.35rem;">
-                    📥 Pre-Formatted Transactional Dataset Template
-                </div>
-                <div style="font-size: 0.92rem; color: #E2E8F0; line-height: 1.5;">
-                    Upload standard e-commerce transactional logs. The pipeline requires: 
-                    <code>InvoiceNo</code>, <code>StockCode</code>, <code>Description</code>, <code>Quantity</code>, <code>InvoiceDate</code>, <code>UnitPrice</code>, and <code>CustomerID</code>.
-                </div>
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(56, 189, 248, 0.1) 100%); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 12px; padding: 1.15rem 1.35rem; margin-bottom: 1.25rem;">
+            <div style="font-size: 1.15rem; font-weight: 700; color: #818CF8; margin-bottom: 0.35rem;">
+                📥 Pre-Formatted Transactional Dataset Template
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            <div style="font-size: 0.92rem; color: #E2E8F0; line-height: 1.5;">
+                Upload standard e-commerce transactional logs containing: <code>InvoiceNo</code>, <code>StockCode</code>, <code>Description</code>, <code>Quantity</code>, <code>InvoiceDate</code>, <code>UnitPrice</code>, and <code>CustomerID</code>.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     st.markdown("#### 📋 Required Schema Columns")
     col_desc_df = pd.DataFrame([
@@ -406,10 +383,10 @@ def show_schema_modal(inspection: Optional[Dict[str, Any]] = None, error_msg: Op
         {"Column": "StockCode", "Type": "String", "Description": "Product / Item SKU identifier code.", "Required": "Yes"},
         {"Column": "Description", "Type": "String", "Description": "Product title or item description.", "Required": "Yes"},
         {"Column": "Quantity", "Type": "Integer (> 0)", "Description": "Number of units purchased per line item.", "Required": "Yes"},
-        {"Column": "InvoiceDate", "Type": "Datetime (YYYY-MM-DD)", "Description": "Date and timestamp when the transaction occurred.", "Required": "Yes"},
-        {"Column": "UnitPrice", "Type": "Float (> 0)", "Description": "Unit price in dollars or currency per item.", "Required": "Yes"},
-        {"Column": "CustomerID", "Type": "String / Integer", "Description": "Unique customer account identifier for RFM tracking.", "Required": "Yes"},
-        {"Column": "Country", "Type": "String", "Description": "Customer geographic country location.", "Required": "Optional"},
+        {"Column": "InvoiceDate", "Type": "Datetime (YYYY-MM-DD)", "Description": "Date and timestamp of transaction.", "Required": "Yes"},
+        {"Column": "UnitPrice", "Type": "Float (> 0)", "Description": "Unit price in currency per item.", "Required": "Yes"},
+        {"Column": "CustomerID", "Type": "String / Integer", "Description": "Unique customer account identifier.", "Required": "Yes"},
+        {"Column": "Country", "Type": "String", "Description": "Customer geographic location.", "Required": "Optional"},
     ])
     st.dataframe(col_desc_df, use_container_width=True, hide_index=True)
 
@@ -426,4 +403,3 @@ def show_schema_modal(inspection: Optional[Dict[str, Any]] = None, error_msg: Op
         type="primary",
         use_container_width=True,
     )
-
